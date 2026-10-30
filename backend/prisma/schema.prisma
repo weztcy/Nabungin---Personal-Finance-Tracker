@@ -1,0 +1,325 @@
+// ============================================================
+// Nabungin — Prisma schema
+// Prisma 7 (Rust-free client) + PostgreSQL + driver adapter (@prisma/adapter-pg)
+// Datasource url dikonfigurasi di prisma7.config.ts
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------
+
+enum AccountType {
+  CASH
+  BANK
+  EWALLET
+  CREDIT_CARD
+  INVESTMENT
+  LOAN
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+}
+
+enum TxType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum RecurFreq {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// ------------------------------------------------------------
+// BETTER AUTH — core models
+// Field standar Better Auth + ekstensi milik Nabungin pada User.
+// ------------------------------------------------------------
+
+model User {
+  id            String   @id
+  name          String
+  email         String
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // --- ekstensi Nabungin ---
+  baseCurrency String @default("IDR")
+  timezone     String @default("Asia/Jakarta")
+
+  // relasi Better Auth
+  sessions Session[]
+  accounts Account[]
+
+  // relasi finance
+  financeAccounts FinanceAccount[]
+  categories      Category[]
+  transactions    Transaction[]
+  budgets         Budget[]
+  goals           Goal[]
+  recurrences     Recurrence[]
+  tags            Tag[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ------------------------------------------------------------
+// NABUNGIN — finance models
+// Uang disimpan sebagai BigInt minor units (IDR scale = 0).
+// ------------------------------------------------------------
+
+model FinanceAccount {
+  id     String      @id @default(cuid())
+  userId String
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  type   AccountType @default(CASH)
+  color  String?
+  icon   String?
+
+  // saldo awal (minor units; IDR scale=0)
+  openingBalance BigInt @default(0)
+
+  isArchived Boolean @default(false)
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions   Transaction[] @relation("AccountTransactions")
+  toTransactions Transaction[] @relation("AccountTransfers")
+  budgets        Budget[]
+  goals          Goal[]
+  recurrences    Recurrence[]  @relation("RecurrenceAccount")
+  toRecurrences  Recurrence[]  @relation("RecurrenceToAccount")
+
+  @@index([userId, isArchived])
+  @@map("finance_account")
+}
+
+model Category {
+  id     String       @id @default(cuid())
+  userId String
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  kind   CategoryKind
+
+  parentId String?
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+
+  color     String?
+  icon      String?
+  isArchive Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  budgets      Budget[]
+  recurrences  Recurrence[]
+
+  @@unique([userId, name, kind])
+  @@index([userId, kind])
+  @@map("category")
+}
+
+model Tag {
+  id     String  @id @default(cuid())
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  color  String?
+
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@unique([userId, name])
+  @@map("tag")
+}
+
+model Transaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   TxType
+  amount BigInt // minor units (IDR scale=0); selalu positif, tipe menentukan arah
+  date   DateTime
+
+  // akun sumber (atau akun tunggal untuk income/expense)
+  accountId String
+  account   FinanceAccount @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: Cascade)
+
+  // akun tujuan (khusus TRANSFER)
+  toAccountId String?
+  toAccount   FinanceAccount? @relation("AccountTransfers", fields: [toAccountId], references: [id], onDelete: SetNull)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  note  String?
+  payee String?
+
+  recurrenceId String?
+  recurrence   Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+
+  tags Tag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([accountId])
+  @@index([categoryId])
+  @@map("transaction")
+}
+
+model Budget {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name   String
+  amount BigInt // minor units (IDR scale=0)
+
+  periodStart DateTime
+  periodEnd   DateTime
+  frequency   RecurFreq @default(MONTHLY)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  accountId String?
+  account   FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, periodStart])
+  @@map("budget")
+}
+
+model Goal {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name         String
+  targetAmount BigInt @default(0) // minor units
+  savedAmount  BigInt @default(0) // minor units
+
+  targetDate  DateTime?
+  color       String?
+  isCompleted Boolean   @default(false)
+
+  accountId String?
+  account   FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isCompleted])
+  @@map("goal")
+}
+
+model Recurrence {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name     String
+  type     TxType
+  amount   BigInt // minor units
+  freq     RecurFreq @default(MONTHLY)
+  interval Int       @default(1)
+
+  nextRunAt DateTime
+  lastRunAt DateTime?
+  isActive  Boolean   @default(true)
+
+  accountId String
+  account   FinanceAccount @relation("RecurrenceAccount", fields: [accountId], references: [id], onDelete: Cascade)
+
+  toAccountId String?
+  toAccount   FinanceAccount? @relation("RecurrenceToAccount", fields: [toAccountId], references: [id], onDelete: SetNull)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  note String?
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isActive, nextRunAt])
+  @@map("recurrence")
+}

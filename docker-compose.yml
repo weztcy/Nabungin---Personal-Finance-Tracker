@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: nabungin-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nabungin
+      POSTGRES_PASSWORD: nabungin
+      POSTGRES_DB: nabungin
+    ports:
+      - "5433:5432"
+    volumes:
+      - nabungin-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nabungin -d nabungin"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  adminer:
+    image: adminer:latest
+    container_name: nabungin-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  nabungin-db-data:

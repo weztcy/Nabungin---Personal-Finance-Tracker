@@ -1,0 +1,35 @@
+{
+  "name": "nabungin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nabungin — Personal Finance Tracker (monorepo: backend REST API + frontend Next.js)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c magenta,cyan \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm run dev --workspace @nabungin/backend",
+    "dev:frontend": "npm run dev --workspace @nabungin/frontend",
+    "build": "npm run build --workspace @nabungin/frontend",
+    "start": "concurrently -n backend,frontend -c magenta,cyan \"npm:start:backend\" \"npm:start:frontend\"",
+    "start:backend": "npm run start --workspace @nabungin/backend",
+    "start:frontend": "npm run start --workspace @nabungin/frontend",
+    "lint": "npm run lint --workspace @nabungin/frontend",
+    "typecheck": "npm run typecheck --workspace @nabungin/backend && npm run typecheck --workspace @nabungin/frontend",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspace @nabungin/frontend",
+    "db:generate": "npm run db:generate --workspace @nabungin/backend",
+    "db:migrate": "npm run db:migrate --workspace @nabungin/backend",
+    "db:push": "npm run db:push --workspace @nabungin/backend",
+    "db:seed": "npm run db:seed --workspace @nabungin/backend",
+    "db:studio": "npm run db:studio --workspace @nabungin/backend",
+    "db:reset": "npm run db:reset --workspace @nabungin/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1"
+  }
+}

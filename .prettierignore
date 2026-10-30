@@ -1,0 +1,16 @@
+# dependencies / build
+**/node_modules
+**/.next
+**/out
+**/build
+**/coverage
+
+# generated
+**/src/generated
+**/next-env.d.ts
+
+# lockfiles
+package-lock.json
+**/package-lock.json
+pnpm-lock.yaml
+yarn.lock
